@@ -1,0 +1,8 @@
+[github]
+personal_access_token = aaaaaaaaabbbbbbbbbccccccdddddddeeeee9999
+owner = myaccountname
+repository = dummy
+
+[status]
+target_url = https://example.com/where/do/you/want/it/
+description = Bare with me, I'm not ready yet

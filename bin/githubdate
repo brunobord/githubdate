@@ -1,0 +1,114 @@
+import os
+import json
+import ConfigParser
+
+import requests
+import click
+
+
+class Configurator(object):
+    "The ugly configuration loader"
+    api_root = 'https://api.github.com'
+
+    def __init__(self):
+        config = ConfigParser.ConfigParser()
+        config.read('./githubdate.ini')
+
+        # Configuration loading
+        self.personal_access_token = config.get(
+            'github', 'personal_access_token')
+        self.owner = config.get('github', 'owner')
+        self.repository = config.get('github', 'repository')
+        self.auth = (self.personal_access_token, 'x-oauth-basic')
+        self.pause_file = '{}.{}.json'.format(self.owner, self.repository)
+        self.pull_list = '{}/repos/{}/{}/pulls'.format(
+            self.api_root, self.owner, self.repository)
+
+        target_url = config.get('status', 'target_url') or None
+        self.pause_payload = {
+            'state': 'pending',
+            'description': config.get('status', 'description'),
+            "context": 'Githubdate',
+        }
+        self.back_from_empty_payload = {
+            'state': 'pending',
+            'description': "The project is unpaused. Merge carefully,"
+                           " because you didn't have a commit status when it"
+                           " was paused.",
+            "context": 'Githubdate',
+        }
+        if target_url:
+            self.pause_payload.update({
+                'target_url': config.get('status', 'target_url')})
+            self.back_from_empty_payload.update({
+                'target_url': config.get('status', 'target_url')})
+        # JSON dump used in POST requests
+        self.pause_payload = json.dumps(self.pause_payload)
+        self.back_from_empty_payload = json.dumps(self.back_from_empty_payload)
+
+
+@click.group()
+def cli():
+    "Githubdate your project PRs"
+    pass
+
+
+@cli.command()
+def pause():
+    "Pause the PRs"
+    config = Configurator()
+    if os.path.exists(config.pause_file):
+        click.echo(click.style('wait a minute, this project is already paused.'
+                               ' Please unpause it!', fg='yellow'))
+        return
+    saved_data = {}
+    # Loop over the opened pull-requests
+    resp = requests.get(config.pull_list + '?state=open', auth=config.auth)
+    pulls = resp.json()
+    for pull in pulls:
+        url = pull['statuses_url']
+        # Fetch the current status
+        resp = requests.get(url, auth=config.auth)
+        statuses = resp.json()
+        if statuses:
+            # Save statuses for further use
+            # just pick the latest
+            latest = max((s['created_at'], s) for s in statuses)[1]
+            s = {k: v for k, v in latest.items()
+                 if k in ('state', 'target_url', 'description', 'context')}
+            saved_data[url] = s
+        else:
+            saved_data[url] = {}
+        # If there are statuses, you have to update it
+        # No current status? but warn the user anyway
+        requests.post(url, data=config.pause_payload, auth=config.auth)
+    # Record the statuses for further uses
+    json.dump(saved_data, open(config.pause_file, 'w'))
+    click.echo(
+        click.style('Paused {} pull-requests'.format(len(pulls)), fg='green'))
+
+
+@cli.command()
+def unpause():
+    "Unpause the PRs"
+    config = Configurator()
+    if not os.path.exists(config.pause_file):
+        click.echo(
+            click.style('Are you sure this project is paused?', fg='red'))
+        return
+    paused = json.load(open(config.pause_file))
+    for url, _payload in paused.items():
+        if _payload:
+            requests.post(url, data=json.dumps(_payload), auth=config.auth)
+        else:
+            requests.post(url,
+                          data=config.back_from_empty_payload,
+                          auth=config.auth)
+    os.unlink(config.pause_file)
+    click.echo(
+        click.style('Unpaused {} pull-requests'.format(len(paused)),
+                    fg='green'))
+
+
+if __name__ == '__main__':
+    cli()
