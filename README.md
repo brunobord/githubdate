@@ -15,6 +15,11 @@ situation is cooler, just send an update with a green light.
 * clone this repository,
 * pip install it (preferrably in a virtualenv)
 
+Or
+
+    pip install githubdate
+
+
 ## Configure
 
 Pick the [githubdate.ini.example](githubdate.ini.example) file and save it as
