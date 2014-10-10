@@ -32,3 +32,8 @@ to be sent to the user).
 
     githubdate pause  # to pause your PRs
     githubdate unpause  # to free your PRs from this pending status
+
+
+## License
+
+This is a MIT-licensed software, by Bruno Bord (c) 2014.
